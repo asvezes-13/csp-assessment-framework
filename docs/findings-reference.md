@@ -4,7 +4,7 @@ This is the reference guide for every finding the framework can raise:
 what triggers it, why it's flagged, what severity it gets, and what to do
 about it. It exists so a developer looking at a report doesn't have to
 read `evaluator.py`/`reputation.py` to understand *why* something was
-flagged — everything here is a static description of what's currently
+flagged everything here is a static description of what's currently
 implemented, cross-checked against the code that generates it.
 
 If you change a severity or add a check in the code, update this
