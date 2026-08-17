@@ -73,7 +73,7 @@ Triggered whenever any directive contains one of these CSP keywords.
 
 **Programmer takeaway:** any `unsafe-*` keyword in `script-src` is a hard
 stop for a mature CSP. If you have `unsafe-inline` because of legacy
-inline `<script>` blocks, the fix is nonces/hashes (§4), not leaving it in
+inline `<script>` blocks, the fix is nonces/hashes, not leaving it in
 place indefinitely.
 
 ---
