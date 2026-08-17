@@ -1,0 +1,105 @@
+# ==============================================================================
+# csp-assessment-framework configuration
+#
+# This is the single source of configuration for the framework. No other
+# configuration files are used. All values below have sane defaults in
+# csp_auditor/configuration.py if omitted, but explicit is preferred for
+# production/CI use.
+# ==============================================================================
+
+# --------------------------------------------------------------------------
+# Targets to audit. Each entry may be a plain URL string, or a mapping for
+# more control (per-target overrides of timeout / verify_ssl / max_redirects).
+# --------------------------------------------------------------------------
+targets:
+  - url: "https://example.com"
+    name: "example-marketing-site"
+
+  - url: "https://github.com"
+    name: "github"
+
+  - url: "https://www.google.com"
+    name: "google-search"
+
+  # Per-target overrides example:
+  # - url: "https://internal-app.corp.example.com"
+  #   name: "internal-app"
+  #   timeout: 20
+  #   verify_ssl: false
+  #   max_redirects: 5
+  #   labels:
+  #     env: "staging"
+  #     team: "platform-security"
+
+# --------------------------------------------------------------------------
+# Network / collection settings
+# --------------------------------------------------------------------------
+network:
+  timeout: 10            # seconds, per HTTP request
+  retry_count: 3          # retries per hop on transient network failure
+  retry_backoff: 0.5      # exponential backoff base, in seconds
+  verify_ssl: true        # set false only for internal/self-signed hosts
+  max_redirects: 10       # ceiling to guard against redirect loops
+  concurrency: 8           # number of targets audited in parallel
+  user_agent: "csp-auditor/1.0 (+https://github.com/asvezes-13/csp-assessment-framework)"
+
+# --------------------------------------------------------------------------
+# Policy validation rules
+# --------------------------------------------------------------------------
+policy_rules:
+  required_directives:
+    - "default-src"
+    - "script-src"
+    - "object-src"
+    - "base-uri"
+    - "frame-ancestors"
+
+  forbidden_keywords:
+    - "unsafe-inline"
+    - "unsafe-eval"
+    - "unsafe-allow-redirects"
+
+# --------------------------------------------------------------------------
+# Host Reputation (allowlist) module
+#
+# Optional. When enabled, every host found in the directives listed below
+# is checked against `trusted_domains`; anything NOT covered is flagged as
+# an untrusted host finding. This is a whitelist, not a threat-intel
+# blacklist: it fails closed, so anything you haven't explicitly trusted
+# gets flagged, even if it isn't independently known to be malicious.
+#
+# Wildcard matching follows CSP semantics: "*.example.com" trusts any
+# subdomain of example.com (but not example.com itself); a plain entry
+# like "cdn.example.com" trusts only that exact host.
+# --------------------------------------------------------------------------
+host_allowlist:
+  enabled: false          # set true to activate this module
+  severity: "WARN"        # INFO | WARN | VIOLATION | ALARM | CRITICAL
+  # Note: 'self', 'none', 'unsafe-inline', nonces, hashes, and bare schemes
+  # (data:, blob:, https:, ...) are never hosts, so they are always skipped
+  # by this module — no need to list them here.
+  trusted_domains:
+    - "*.example.com"               # trusts any subdomain of example.com
+    - "cdn.jsdelivr.net"            # trusts only this exact host
+    - "fonts.googleapis.com"
+    - "fonts.gstatic.com"
+
+  # Optional: restrict which directives are checked (defaults to all
+  # host-bearing fetch/document/navigation directives if omitted).
+  # directives:
+  #   - "script-src"
+  #   - "connect-src"
+
+# --------------------------------------------------------------------------
+# Output / reporting
+# --------------------------------------------------------------------------
+output:
+  output_dir: "reports"
+  output_format: "both"   # json | console | both
+  console_color: true
+
+# --------------------------------------------------------------------------
+# Logging
+# --------------------------------------------------------------------------
+logging:
+  level: "INFO"           # DEBUG | INFO | WARNING | ERROR | CRITICAL

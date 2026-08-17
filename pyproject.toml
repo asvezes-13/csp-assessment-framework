@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "csp-assessment-framework"
+version = "1.0.0"
+description = "Production-grade Content Security Policy (CSP) assessment framework for enterprise AppSec teams and CI/CD security gates."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "asvezes-13" }
+]
+keywords = ["csp", "content-security-policy", "appsec", "security", "web-security", "owasp"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "httpx>=0.27,<1.0",
+    "PyYAML>=6.0,<7.0",
+]
+
+[project.scripts]
+csp-auditor = "main:main"
+
+[tool.setuptools]
+packages = ["csp_auditor"]
+
