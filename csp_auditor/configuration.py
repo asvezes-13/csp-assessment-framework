@@ -134,6 +134,16 @@ def load_config(path: str) -> AppConfig:
 
     # ---- network ---------------------------------------------------------
     net_raw = raw.get("network", {}) or {}
+    proxy_raw = net_raw.get("proxy", {}) or {}
+    proxy_enabled = bool(proxy_raw.get("enabled", False))
+    proxy_url = proxy_raw.get("url")
+    if proxy_enabled and not proxy_url:
+        raise ConfigurationError(
+            "network.proxy.enabled is true but network.proxy.url is not set."
+        )
+    if proxy_url is not None and not isinstance(proxy_url, str):
+        raise ConfigurationError("network.proxy.url must be a string.")
+
     network = NetworkConfig(
         timeout=float(net_raw.get("timeout", 10.0)),
         retry_count=int(net_raw.get("retry_count", 3)),
@@ -147,13 +157,9 @@ def load_config(path: str) -> AppConfig:
                 "csp-auditor/1.0 (+https://github.com/your-org/csp-assessment-framework)",
             )
         ),
+        proxy_enabled=proxy_enabled,
+        proxy_url=proxy_url,
     )
-    if network.timeout <= 0:
-        raise ConfigurationError("network.timeout must be > 0")
-    if network.retry_count < 0:
-        raise ConfigurationError("network.retry_count must be >= 0")
-    if network.concurrency < 1:
-        raise ConfigurationError("network.concurrency must be >= 1")
 
     # ---- policy rules ------------------------------------------------------
     rules_raw = raw.get("policy_rules", {}) or {}
