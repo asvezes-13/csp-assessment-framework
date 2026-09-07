@@ -30,7 +30,7 @@ class NetworkConfig:
     verify_ssl: bool = True
     max_redirects: int = 10
     concurrency: int = 8
-    user_agent: str = "csp-auditor/1.0 (+https://github.com/your-org/csp-assessment-framework)"
+    user_agent: str = "csp-auditor/1.0 (+https://github.com/asvezes-13/csp-assessment-framework)"
     proxy_enabled: bool = False
     proxy_url: Optional[str] = None
 
@@ -154,7 +154,7 @@ def load_config(path: str) -> AppConfig:
         user_agent=str(
             net_raw.get(
                 "user_agent",
-                "csp-auditor/1.0 (+https://github.com/your-org/csp-assessment-framework)",
+                "csp-auditor/1.0 (+https://github.com/asvezes-13/csp-assessment-framework)",
             )
         ),
         proxy_enabled=proxy_enabled,
