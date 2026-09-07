@@ -31,6 +31,8 @@ class NetworkConfig:
     max_redirects: int = 10
     concurrency: int = 8
     user_agent: str = "csp-auditor/1.0 (+https://github.com/your-org/csp-assessment-framework)"
+    proxy_enabled: bool = False
+    proxy_url: Optional[str] = None
 
 
 @dataclass
