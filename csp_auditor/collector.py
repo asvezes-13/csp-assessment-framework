@@ -83,25 +83,39 @@ class HTTPCollector:
         self._transport = transport
 
     # ----------------------------------------------------------------
+    def _build_client_kwargs(self, target: Target) -> dict:
+        """
+        Assemble the kwargs used to construct the per-target httpx.Client.
+        Pulled into its own method so proxy/verify/timeout resolution can be
+        unit tested without actually opening a connection.
+        """
+        timeout = target.timeout or self.network.timeout
+        verify_ssl = self.network.verify_ssl if target.verify_ssl is None else target.verify_ssl
+
+        kwargs = dict(
+            verify=verify_ssl,
+            follow_redirects=False,
+            timeout=timeout,
+            headers={"User-Agent": self.network.user_agent},
+            transport=self._transport,
+        )
+
+        if self.network.proxy_enabled and self.network.proxy_url:
+            kwargs["proxy"] = self.network.proxy_url
+
+        return kwargs
+
+    # ----------------------------------------------------------------
     def collect(self, target: Target) -> RedirectChain:
         """Collect the full redirect chain for a target. Never raises."""
         chain = RedirectChain(target=target)
 
         max_redirects = target.max_redirects or self.network.max_redirects
-        timeout = target.timeout or self.network.timeout
-        verify_ssl = self.network.verify_ssl if target.verify_ssl is None else target.verify_ssl
-
         current_url = target.url
         visited = set()
 
         try:
-            with httpx.Client(
-                verify=verify_ssl,
-                follow_redirects=False,
-                timeout=timeout,
-                headers={"User-Agent": self.network.user_agent},
-                transport=self._transport,
-            ) as client:
+            with httpx.Client(**self._build_client_kwargs(target)) as client:
                 for hop_index in range(max_redirects + 1):
                     if current_url in visited:
                         chain.error = f"Redirect loop detected at {current_url}"
