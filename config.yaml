@@ -42,6 +42,14 @@ network:
   max_redirects: 10       # ceiling to guard against redirect loops
   concurrency: 8           # number of targets audited in parallel
   user_agent: "csp-auditor/1.0 (+https://github.com/asvezes-13/csp-assessment-framework)"
+  
+  # Optional — disabled by default. Route all outbound requests through a
+  # forward proxy (e.g. a corporate egress proxy). Supports embedded
+  # credentials in the URL (http://user:pass@host:port). Applies to every
+  # target; there is currently no per-target proxy override.
+  proxy:
+    enabled: false
+    url: "http://user:pass@proxy.internal.corp:8080"
 
 # --------------------------------------------------------------------------
 # Policy validation rules
