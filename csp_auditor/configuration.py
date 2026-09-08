@@ -46,6 +46,7 @@ class OutputConfig:
     output_dir: str = "reports"
     output_format: str = "json"  # json | console | both
     console_color: bool = True
+    generate_html: bool = False
 
 
 @dataclass
@@ -160,6 +161,12 @@ def load_config(path: str) -> AppConfig:
         proxy_enabled=proxy_enabled,
         proxy_url=proxy_url,
     )
+    if network.timeout <= 0:
+        raise ConfigurationError("network.timeout must be > 0")
+    if network.retry_count < 0:
+        raise ConfigurationError("network.retry_count must be >= 0")
+    if network.concurrency < 1:
+        raise ConfigurationError("network.concurrency must be >= 1")
 
     # ---- policy rules ------------------------------------------------------
     rules_raw = raw.get("policy_rules", {}) or {}
@@ -183,6 +190,7 @@ def load_config(path: str) -> AppConfig:
         output_dir=str(out_raw.get("output_dir", "reports")),
         output_format=output_format,
         console_color=bool(out_raw.get("console_color", True)),
+        generate_html=bool(out_raw.get("generate_html", False)),
     )
 
     logging_level = str(raw.get("logging", {}).get("level", "INFO")).upper() if isinstance(
