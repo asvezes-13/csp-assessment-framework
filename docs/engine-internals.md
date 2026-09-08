@@ -421,6 +421,30 @@ first inner quote and silently produce a broken policy string. (This was
 an actual bug caught by the test suite during development — see
 `test_extract_meta_csps_finds_tag` in `tests/test_collector.py`.)
 
+### 7.5 Forward proxy support
+
+`network.proxy.enabled`/`network.proxy.url` in `config.yaml` map directly
+to `NetworkConfig.proxy_enabled`/`proxy_url`. `_build_client_kwargs`
+conditionally adds a `proxy` kwarg to the `httpx.Client(...)`
+construction only when both are set — when disabled (the default),
+`httpx.Client` is built exactly as before, so there is no behavior change
+for anyone not using a proxy. The proxy URL supports embedded credentials
+(`http://user:pass@host:port`) since that's passed straight through to
+`httpx`, which handles Basic proxy auth natively.
+
+**Gotcha discovered during testing:** `httpx.Client` accepts both
+`transport=` (used by this codebase's test suite to inject
+`httpx.MockTransport`) and `proxy=` simultaneously without erroring, but
+when both are set, httpx internally mounts a dedicated proxy transport for
+all-URL patterns that takes priority over the explicitly-passed
+`transport=` — meaning a mocked transport is silently bypassed for actual
+request dispatch once a proxy is configured. This is why
+`test_client_kwargs_include_proxy_when_enabled` and its siblings test
+`_build_client_kwargs()`'s output directly rather than exercising
+`collect()` end-to-end with a mock transport; a real proxy round-trip is
+instead verified with two genuine (non-mocked) local HTTP servers over
+loopback, not with `httpx.MockTransport`.
+
 ---
 
 ## 8. `csp_auditor/reputation.py` — Host Reputation (allowlist)
@@ -492,11 +516,11 @@ config files never need to be touched to keep working after an upgrade.
 
 ## 10. `csp_auditor/reporter.py` — Reporting Engine
 
-**Purpose:** render an already-fully-computed `Report` as console text or
-JSON. Contains zero evaluation/scoring logic — if you find yourself
-wanting to change *what* counts as a finding or *how* severity is
-decided, you're in the wrong module; this one only changes *how results
-look*.
+**Purpose:** render an already-fully-computed `Report` as console text,
+JSON, or a self-contained HTML report. Contains zero evaluation/scoring
+logic — if you find yourself wanting to change *what* counts as a finding
+or *how* severity is decided, you're in the wrong module; this one only
+changes *how results look*.
 
 **JSON shape is hand-built, not `dataclasses.asdict`:** `_to_serializable`
 manually walks the `Report` tree rather than blindly serializing every
@@ -511,6 +535,93 @@ default enum repr, which keeps the JSON diffable/greppable in CI logs.
 fixed ordering list — so `CRITICAL` findings always surface at the top
 of a target's block regardless of the order the finding-generators ran
 in.
+
+### 10.1 HTML report generation
+
+`render_html_report`/`write_html_report` are a thin wrapper, not a second
+data pipeline: they call the *exact same* `_to_serializable(report)` used
+by the JSON writer, `json.dumps` it, and substitute it into a single
+placeholder token (`__CSP_REPORT_DATA__`) inside a static template file,
+`report_template.html`. This is a deliberate single-source-of-truth
+design — there is no separate "HTML view model," so the JSON and HTML
+reports can never drift apart in *content*, only in how that content is
+presented. If a new field is added to `_to_serializable`, the HTML
+report's embedded data gains it automatically without any template
+change (though the template's rendering functions would need to be
+updated to actually *display* the new field — the data flows through
+either way).
+
+**The template itself is a static asset, not Python-generated markup.**
+All CSS and JavaScript live inline in `report_template.html` — there are
+no CDN links, no external font loading, and no network calls anywhere in
+the rendered output. This is intentional: the people using this report
+are frequently the same people who'd be uncomfortable with a security
+report "phoning home" for assets, and it also means the file works
+correctly when opened via `file://` on a machine with no internet access
+at all — a real constraint for auditing internal/air-gapped targets.
+
+**Placeholder substitution mechanics:**
+```python
+template = _TEMPLATE_PATH.read_text(encoding="utf-8")
+json_blob = json.dumps(_to_serializable(report), default=_json_default)
+json_blob = json_blob.replace("</", "<\\/")   # see XSS note below
+html = template.replace("__CSP_REPORT_DATA__", json_blob)
+```
+`str.replace` is used rather than any templating engine (Jinja2, etc.) —
+deliberately, to avoid adding a templating-library dependency for what is
+a single, one-shot substitution. Two safety checks guard this: if the
+template file is missing, or if it's missing the placeholder token
+entirely (e.g. someone edited the template and typo'd the marker), the
+function raises `ReportingError` immediately rather than silently
+producing an HTML file with the literal placeholder string sitting where
+data should be.
+
+**Why `</` is escaped to `<\/`:** the JSON blob is embedded directly
+inside a `<script>` tag as a JS literal. If any string value inside the
+report (an `evidence` field, a raw CSP policy string, etc.) happened to
+contain the literal characters `</script`, the browser's HTML parser
+would close the `<script>` tag early *before* JavaScript ever runs,
+corrupting the page — this is a real, well-known injection vector for any
+app that embeds JSON-with-untrusted-strings inside `<script>` tags.
+Replacing every `</` with `<\/` (a JS-legal escaped forward slash that
+has zero effect on `JSON.parse`/embedded-literal semantics) neutralizes
+this without needing to know in advance which fields might contain it.
+`test_render_html_report_escapes_script_close_sequences` in
+`tests/test_reporter.py` locks this in by asserting exactly one real
+`</script>` tag exists in the output even when a finding's evidence field
+is deliberately set to `</script><script>alert(1)</script>`.
+
+**All data rendering inside the template is done via `escapeHtml()`,**
+not `innerHTML` string concatenation of raw field values — every
+JS-side render function (`renderFinding`, `renderPolicyPanel`,
+`renderHopChain`, etc.) routes field values through this escaper before
+building HTML strings. This is defense-in-depth on top of the
+`</script>`-escaping above: even though the data arrives as a parsed JS
+object (not re-parsed HTML), any field value that happens to contain
+`<`/`>`/`&`/quotes is neutralized before being placed into the DOM,
+rather than relying on the JSON-embedding step being the only protection.
+
+**The directive/value breakdown in the "Policies" panel is a client-side,
+display-only re-implementation of a small piece of `parser.py`'s logic**
+(`splitDirectives` in the template's JS: split on `;`, then on whitespace)
+— it is *not* fed by the real `Policy`/`Directive` objects, only by the
+raw policy string already present in the JSON (`policies.enforced_raw`,
+etc.). This is intentional: shipping the full structured `Policy` object
+into the HTML would mean keeping a second serialization format in sync
+with `models.py`, for a purely cosmetic chip-rendering purpose. The
+tradeoff is that this lightweight JS parser doesn't handle every edge
+case `parser.py` does (duplicate directives, malformed tokens, etc.) —
+those are still fully reported via the `findings` array either way, so
+nothing is lost from a security-reporting standpoint, only from a
+"pretty-print every parser edge case" standpoint.
+
+**No server-side HTML escaping happens in `reporter.py` itself** — the
+Python side only produces a JSON blob (which has its own well-defined
+escaping rules via `json.dumps`) plus the one `</`-specific defensive
+replace described above. All HTML-specific escaping is the template's
+JS's job (`escapeHtml`), keeping the concerns cleanly separated: Python
+guarantees valid embeddable JSON, JavaScript guarantees safe DOM
+insertion from that JSON.
 
 ---
 
