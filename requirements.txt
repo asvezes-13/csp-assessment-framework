@@ -1,2 +1,4 @@
 httpx>=0.27,<1.0
 PyYAML>=6.0,<7.0
+
+# Before installing validate if any vulnerabilities/CVEs have been published in these versions.
