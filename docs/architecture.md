@@ -38,7 +38,7 @@ Scoring
   │  (scoring.py: Findings -> Score, 0-100 + letter grade)
   ▼
 Reporting
-     (reporter.py: console + timestamped JSON)
+     (reporter.py: console + timestamped JSON + optional self-contained HTML)
 ```
 
 Every arrow above is a hard boundary: each stage consumes only the
@@ -60,7 +60,7 @@ structured output of the previous stage. In particular, **nothing after
 | `evaluator.py`      | `Policy` -> `EffectivePolicy` (fallback resolution) -> `Finding[]`              | `models`, `utils`              |
 | `comparator.py`     | `EffectivePolicy` x `EffectivePolicy` -> `PolicyComparisonResult`                | `models`, `evaluator`, `utils` |
 | `scoring.py`        | `Finding[]` -> `Score`                                                          | `models`                       |
-| `reporter.py`       | `Report` -> console text / JSON file                                            | `models`, `exceptions`         |
+| `reporter.py`       | `Report` -> console text / JSON file / self-contained HTML report               | `models`, `exceptions`         |
 | `reputation.py`     | Host Reputation (allowlist): flags hosts not in `host_allowlist.trusted_domains`| `models`, `configuration`, `utils` |
 | `main.py`           | CLI orchestration: wires every stage together, concurrency, CI/CD exit codes    | everything above               |
 
