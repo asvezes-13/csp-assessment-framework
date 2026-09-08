@@ -40,31 +40,38 @@ Report-Only vs Enforced comparison, and `<meta>`-tag-specific limitations.
 - **Transparent scoring** — a 0-100 score and A-F letter grade computed via
   an explainable severity-weighted deduction model, plus complexity
   metrics.
-- **Rich reporting** — colorized console output and timestamped JSON
-  reports suitable for CI/CD pipelines, with a `--fail-under` gate.
+- **Rich reporting** — colorized console output, timestamped JSON
+  reports suitable for CI/CD pipelines, and an optional self-contained
+  interactive HTML report: a visual overview of every scanned target
+  (score, grade, finding counts) that you can click into to drill down
+  into redirect chains, enforced/report-only/meta policies side by side,
+  the comparison diff, and every individual finding — filterable by
+  severity and searchable by target. Works fully offline (no CDN, no
+  fonts, no network calls), so it's safe to open on an air-gapped
+  machine. A `--fail-under` gate is also available for CI/CD pipelines.
 - **Reliability by design** — configurable concurrency, retries, redirect
   loop detection, and per-target error isolation (one bad target never
   aborts the run).
+- **Forward proxy support** — optionally route all outbound collection
+  requests through a corporate/egress proxy, including embedded
+  credentials, via `network.proxy` in `config.yaml`.
 
 ---
 
 ## Installation
 
-```bash 
+```bash
+git clone <this-repo>
+cd csp-assessment-framework
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python3 main.py --config config.yaml
+```
 
-# To guarantee proper security and avoid leaving artifacts behind, follow
-# the bellow procedure.
+Or install as a package:
 
-#Create and activate the environment:
-python3 -m venv .venv               
-source .venv/bin/activate
-pip install -r requirements.txt
-#Run the script:
-python3 main.py --config config.yaml
-#Clean up and delete all installed dependencies:
-deactivate && rm -rf .venv
+```bash
+pip install -e .
+```
 
 Requires **Python 3.10+**.
 
@@ -100,6 +107,10 @@ python main.py --config config.yaml --format console
 # JSON only, custom output directory (for CI artifact upload)
 python main.py --config config.yaml --format json --output-dir ./ci-reports
 
+# Also generate the interactive HTML report (regardless of config.yaml's
+# output.generate_html setting)
+python main.py --config config.yaml --html
+
 # CI/CD security gate: fail the build if any target's enforced-policy score
 # drops below 70
 python main.py --config config.yaml --fail-under 70
@@ -131,6 +142,9 @@ network:
   max_redirects: 10       # ceiling to guard against redirect loops
   concurrency: 8           # number of targets audited in parallel
   user_agent: "csp-auditor/1.0 ..."
+  proxy:                   # optional, disabled by default
+    enabled: false
+    url: "http://user:pass@proxy.internal.corp:8080"
 
 policy_rules:
   required_directives: ["default-src", "script-src", "object-src", "base-uri", "frame-ancestors"]
@@ -140,6 +154,7 @@ output:
   output_dir: "reports"
   output_format: "both"   # json | console | both
   console_color: true
+  generate_html: true     # also write a self-contained interactive HTML report
 
 # Optional — disabled by default. When enabled, flags any host permitted by
 # the policy that isn't in trusted_domains. Wildcard entries ("*.example.com")
@@ -179,8 +194,50 @@ Each target produces a `TargetReport` containing:
   tightened/relaxed directives, an overall relationship summary, a
   migration-readiness verdict, and actionable blockers/guidance.
 
-See `docs/architecture.md` for the full pipeline and module breakdown, and
-`examples/` for a sample console transcript and JSON report.
+See `docs/architecture.md` for the full pipeline and module breakdown,
+`docs/findings-reference.md` for a complete table of every check the
+framework performs (severity, trigger condition, and why it's flagged),
+`docs/engine-internals.md` for a deep dive into the actual algorithms
+behind Confidence, severity assignment, and each module's internal logic
+(fallback resolution, the comparator's permissiveness heuristic, retry/
+backoff math, wildcard host matching, etc.), and `examples/` for a
+sample console transcript and JSON report.
+
+---
+
+## The HTML report
+
+Set `output.generate_html: true` in `config.yaml` (or pass `--html` on the
+command line) to also get a self-contained `.html` file alongside the
+JSON/console output. It's built from the exact same data as the JSON
+report — `reporter.py`'s HTML and JSON writers both call the same
+serialization function, so there's only one place that decides what a
+"target's data" looks like and the two outputs can never disagree.
+
+What it gives you that the JSON/console output doesn't:
+
+- **A visual queue of everything scanned** — a strip of tiles at the top,
+  one per target, color-coded by letter grade, that you click to jump
+  straight to that target's detail card.
+- **Segmented, drill-down detail per target** — click a target to expand
+  it and see the redirect chain, the Enforced/Report-Only/Meta policies
+  side by side (each broken into directive/value chips, not just a raw
+  string dump), the comparison diff (if a Report-Only policy is present),
+  and every finding — each finding itself expands further to show
+  evidence, effective browser behavior, and the recommendation.
+- **Filtering and search** — toggle severities on/off to focus triage on
+  just `CRITICAL`/`ALARM` findings across every target at once, or search
+  by target name/URL.
+- **Works fully offline** — no CDN, no external fonts, no network calls of
+  any kind. Safe to open on an air-gapped machine or hand to someone
+  without needing them to open the JSON in a viewer/formatter.
+- **Styled as a green-phosphor CRT terminal** — scanlines, glow, ANSI-style
+  severity colors, monospace throughout. Purely cosmetic (no functional
+  difference), but it's more fun to stare at during a long triage session
+  than another gray dashboard.
+
+It's a single static HTML file — open it directly in any modern browser,
+no server required.
 
 ---
 
@@ -241,13 +298,27 @@ csp-assessment-framework/
 │   ├── comparator.py         # Enforced vs Report-Only semantic diff
 │   ├── reputation.py         # Host allowlist: flags untrusted hosts
 │   ├── scoring.py            # Finding[] -> Score
-│   └── reporter.py           # Report -> console text / JSON file
-├── docs/architecture.md      # pipeline & module design
+│   ├── reporter.py           # Report -> console text / JSON file / HTML report
+│   └── report_template.html  # Self-contained HTML report template (inline CSS/JS)
+├── tests/                    # pytest unit tests, one module per component
+├── docs/
+│   ├── architecture.md        # pipeline & module design
+│   ├── findings-reference.md  # every finding: severity, trigger, why
+│   └── engine-internals.md    # deep dive: Confidence, algorithms, per-module internals
+├── examples/                 # sample console + JSON output
 └── reports/                  # default JSON report output directory
 ```
 
+### Running tests
 
+```bash
+pip install -r requirements.txt
+pytest tests/ -v
+
+# with coverage
+pytest tests/ --cov=csp_auditor --cov-report=term-missing
 ```
+
 Tests cover the parser (malformed CSP, duplicates, nonces, wildcards),
 evaluator (fallback inheritance, mandatory directives, unsafe keywords,
 `strict-dynamic`/nonce combinations, meta-tag limitations), comparator
@@ -277,7 +348,8 @@ added as new modules that consume `Policy` / `EffectivePolicy` / `Finding`
 objects, without modifying `parser.py` or `evaluator.py`. See "Extensibility"
 in `docs/architecture.md` for the specific integration seams.
 
+---
 
-### License
+## License
 
 MIT
