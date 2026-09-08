@@ -1,1 +1,1 @@
-Delete after, only the folder structure is required.
+Delete this file. Only the folder structure is required.
