@@ -40,7 +40,12 @@ from csp_auditor.models import (
     TargetReport,
 )
 from csp_auditor.parser import parse_multiple
-from csp_auditor.reporter import print_console_report, render_console_report, write_json_report
+from csp_auditor.reporter import (
+    print_console_report,
+    render_console_report,
+    write_html_report,
+    write_json_report,
+)
 from csp_auditor.scoring import score_policy
 
 logger = get_logger("main")
@@ -233,6 +238,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Override output.output_format from config.",
     )
     parser.add_argument("--output-dir", default=None, help="Override output.output_dir from config.")
+    parser.add_argument(
+        "--html", action="store_true",
+        help="Also generate a self-contained interactive HTML report, regardless of output.generate_html in config.",
+    )
     parser.add_argument("--no-color", action="store_true", help="Disable ANSI color in console output.")
     parser.add_argument(
         "--fail-under", type=float, default=None,
@@ -258,6 +267,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         config.output.output_format = args.format
     if args.output_dir:
         config.output.output_dir = args.output_dir
+    if args.html:
+        config.output.generate_html = True
 
     configure_logging(config.logging_level)
 
@@ -278,6 +289,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"\nJSON report written to: {path}", file=sys.stderr)
         except CSPAuditorError as exc:
             print(f"Failed to write JSON report: {exc}", file=sys.stderr)
+            return 2
+
+    if config.output.generate_html:
+        try:
+            html_path = write_html_report(report, config.output.output_dir)
+            print(f"HTML report written to: {html_path}", file=sys.stderr)
+        except CSPAuditorError as exc:
+            print(f"Failed to write HTML report: {exc}", file=sys.stderr)
             return 2
 
     if args.fail_under is not None:
