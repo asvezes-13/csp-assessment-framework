@@ -1,10 +1,14 @@
 """
 Reporting Engine.
 
-Single responsibility: render a `Report` (see models.py) as either rich
-console output or a timestamped JSON file suitable for CI/CD consumption.
-This module performs no evaluation/scoring logic of its own — it only
-formats already-computed results.
+Single responsibility: render a `Report` (see models.py) as rich console
+output, a timestamped JSON file suitable for CI/CD consumption, or a
+self-contained interactive HTML report. This module performs no
+evaluation/scoring logic of its own — it only formats already-computed
+results. The HTML report reuses the exact same serialization
+(`_to_serializable`) as the JSON report, so both are always guaranteed to
+agree on content — there is only one place that decides what a "target's
+data" looks like.
 """
 
 from __future__ import annotations
@@ -20,6 +24,9 @@ from csp_auditor.logging_utils import get_logger
 from csp_auditor.models import Report, Severity, TargetReport
 
 logger = get_logger("reporter")
+
+_TEMPLATE_PATH = Path(__file__).parent / "report_template.html"
+_HTML_DATA_PLACEHOLDER = "__CSP_REPORT_DATA__"
 
 _SEVERITY_COLOR = {
     Severity.INFO: "\033[36m",       # cyan
@@ -173,6 +180,66 @@ def write_json_report(report: Report, output_dir: str) -> str:
         raise ReportingError(f"Failed to write report to {filepath}: {exc}") from exc
 
     logger.info("JSON report written to %s", filepath)
+    return str(filepath)
+
+
+# ==========================================================================
+# HTML rendering
+# ==========================================================================
+def render_html_report(report: Report) -> str:
+    """
+    Render a self-contained, interactive HTML report as a string.
+
+    Reuses `_to_serializable` — the identical data shape the JSON report
+    uses — so the HTML and JSON outputs can never drift apart in content,
+    only in presentation. The template is a static file
+    (`report_template.html`) with inline CSS/JS and zero external
+    dependencies (no CDN, no fonts, no network calls), so the generated
+    file works fully offline — important for AppSec teams auditing
+    internal/air-gapped targets who may not want the report itself to
+    "phone home" for assets.
+    """
+    try:
+        template = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ReportingError(f"Failed to read HTML template at {_TEMPLATE_PATH}: {exc}") from exc
+
+    if _HTML_DATA_PLACEHOLDER not in template:
+        raise ReportingError(
+            f"HTML template at {_TEMPLATE_PATH} is missing the expected "
+            f"'{_HTML_DATA_PLACEHOLDER}' placeholder; refusing to generate a report "
+            "with no embedded data."
+        )
+
+    json_blob = json.dumps(_to_serializable(report), default=_json_default)
+    # Defensively escape "</script" sequences that could theoretically appear
+    # inside embedded string data (e.g. a raw CSP value or finding evidence),
+    # which would otherwise prematurely close the <script> tag in the browser.
+    json_blob = json_blob.replace("</", "<\\/")
+
+    return template.replace(_HTML_DATA_PLACEHOLDER, json_blob)
+
+
+def write_html_report(report: Report, output_dir: str) -> str:
+    """Write a timestamped, self-contained HTML report to output_dir."""
+    out_dir = Path(output_dir)
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ReportingError(f"Cannot create output directory '{output_dir}': {exc}") from exc
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    filename = f"csp_report_{timestamp}.html"
+    filepath = out_dir / filename
+
+    html = render_html_report(report)
+
+    try:
+        filepath.write_text(html, encoding="utf-8")
+    except OSError as exc:
+        raise ReportingError(f"Failed to write report to {filepath}: {exc}") from exc
+
+    logger.info("HTML report written to %s", filepath)
     return str(filepath)
 
 
