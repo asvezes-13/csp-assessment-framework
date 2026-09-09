@@ -300,7 +300,6 @@ csp-assessment-framework/
 │   ├── scoring.py            # Finding[] -> Score
 │   ├── reporter.py           # Report -> console text / JSON file / HTML report
 │   └── report_template.html  # Self-contained HTML report template (inline CSS/JS)
-├── tests/                    # pytest unit tests, one module per component
 ├── docs/
 │   ├── architecture.md        # pipeline & module design
 │   ├── findings-reference.md  # every finding: severity, trigger, why
@@ -309,24 +308,6 @@ csp-assessment-framework/
 └── reports/                  # default JSON report output directory
 ```
 
-### Running tests
-
-```bash
-pip install -r requirements.txt
-pytest tests/ -v
-
-# with coverage
-pytest tests/ --cov=csp_auditor --cov-report=term-missing
-```
-
-Tests cover the parser (malformed CSP, duplicates, nonces, wildcards),
-evaluator (fallback inheritance, mandatory directives, unsafe keywords,
-`strict-dynamic`/nonce combinations, meta-tag limitations), comparator
-(improvement/regression classification, migration readiness, blockers),
-scoring (deduction model, complexity metrics, score floor), and collector
-(redirect chains, loop detection, retry/error isolation, meta extraction)
-using `httpx.MockTransport` — no real network access is required to run
-the test suite.
 
 ### Design principles
 
