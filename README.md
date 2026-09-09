@@ -61,7 +61,7 @@ Report-Only vs Enforced comparison, and `<meta>`-tag-specific limitations.
 ## Installation
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/asvezes-13/csp-assessment-framework.git
 cd csp-assessment-framework
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
